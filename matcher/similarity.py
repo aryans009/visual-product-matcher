@@ -1,51 +1,66 @@
 import torch
-from PIL import Image
 from transformers import ViTImageProcessor, ViTModel
-from sklearn.metrics.pairwise import cosine_similarity
+from PIL import Image
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
 import requests
 from io import BytesIO
 
-feature_extractor = ViTImageProcessor.from_pretrained('google/vit-base-patch16-224-in21k')
-model = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+# We are now using a much smaller "tiny" version of the Vision Transformer because render was not able to handle and demanding to pay for larger models.
+MODEL_NAME = 'WinKawaks/vit-tiny-patch16-224'
 
-def get_image_from_url(url):
-    """Downloads an image from a URL."""
+try:
+    image_processor = ViTImageProcessor.from_pretrained(MODEL_NAME)
+    model = ViTModel.from_pretrained(MODEL_NAME)
+except Exception as e:
+    print(f"Error loading model: {e}")
+    image_processor = None
+    model = None
+
+def extract_features(image: Image.Image) -> np.ndarray | None:
+    """
+    Extracts a feature vector from an image using the ViT model.
+    """
+    if not model or not image_processor:
+        print("Model or image processor not loaded.")
+        return None
+        
     try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        return Image.open(BytesIO(response.content)).convert("RGB")
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading image: {e}")
+        inputs = image_processor(images=image, return_tensors="pt")
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        last_hidden_states = outputs.last_hidden_state
+        features = last_hidden_states.mean(dim=1).cpu().numpy()
+        return features
+    except Exception as e:
+        print(f"An error occurred during feature extraction: {e}")
         return None
 
-def extract_features(image):
-    """Extracts a feature vector from an image."""
-    if image is None:
-        return None
-    inputs = feature_extractor(images=image, return_tensors="pt").to(device)
-    with torch.no_grad():
-        outputs = model(**inputs)
-    return outputs.last_hidden_state.mean(dim=1).cpu().numpy()
-
-def find_similar_products(uploaded_image_features, all_products, top_n=10):
-    """Finds similar products based on feature vectors."""
-    if uploaded_image_features is None or not all_products:
+def find_similar_products(uploaded_features, all_products, top_n=20):
+    """
+    Finds similar products by comparing feature vectors using cosine similarity.
+    """
+    if uploaded_features is None or not all_products:
         return []
 
     product_features = np.array([np.frombuffer(p.feature_vector, dtype=np.float32) for p in all_products])
     
-    similarities = cosine_similarity(uploaded_image_features, product_features)[0]
-    
-    # Get indices of top N similar products
-    similar_indices = np.argsort(similarities)[-top_n:][::-1]
-    
-    similar_products = []
-    for i in similar_indices:
-        product = all_products[i]
-        similarity_score = similarities[i]
-        similar_products.append({'product': product, 'similarity': similarity_score})
-        
-    return similar_products
+    if product_features.ndim == 1:
+        product_features = product_features.reshape(1, -1)
+    if uploaded_features.ndim == 1:
+        uploaded_features = uploaded_features.reshape(1, -1)
+
+    similarities = cosine_similarity(uploaded_features, product_features)[0]
+
+    similar_products_with_scores = []
+    for i, product in enumerate(all_products):
+        similar_products_with_scores.append({
+            'product': product,
+            'similarity': similarities[i]
+        })
+
+    similar_products_with_scores.sort(key=lambda x: x['similarity'], reverse=True)
+
+    return similar_products_with_scores[:top_n]
