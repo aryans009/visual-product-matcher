@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Product Matcher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+</head>
+<body class="bg-gray-100 font-sans">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Visual Product Matcher</h1>
+            <p class="text-gray-600 mt-2">Find products that look like yours.</p>
+        </header>
+
+        <main>
+            <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                <form method="post" enctype="multipart/form-data" id="search-form">
+                    {% csrf_token %}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="image_file" class="block text-sm font-medium text-gray-700 mb-2">Upload an Image</label>
+                            <input type="file" name="image_file" id="image_file" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100">
+                        </div>
+                        <div>
+                            <label for="image_url" class="block text-sm font-medium text-gray-700 mb-2">Or Enter Image URL</label>
+                            <input type="url" name="image_url" id="image_url" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="https://example.com/image.jpg">
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label for="similarity_score" class="block text-sm font-medium text-gray-700">Minimum Similarity Score</label>
+                        <input type="range" id="similarity_score" name="similarity_score" min="0" max="1" step="0.01" value="0.3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                        <span id="similarity-value" class="text-sm text-gray-600">0.30</span>
+                    </div>
+                    <div class="mt-6 text-center">
+                        <button type="submit" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700 transition duration-300 disabled:bg-gray-400" id="search-btn">
+                            Find Similar Products
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            {% if error_message %}
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Error:</strong>
+                    <span class="block sm:inline">{{ error_message }}</span>
+                </div>
+            {% endif %}
+
+            <div id="loading-spinner" class="hidden text-center my-8">
+                 <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-indigo-500 mx-auto"></div>
+                 <p class="mt-4 text-gray-600">Finding similar products...</p>
+            </div>
+
+            {% if uploaded_image_url %}
+            <div id="results-section">
+                <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Your Image</h2>
+                    <img src="{{ uploaded_image_url }}" alt="Uploaded Image" class="max-w-xs mx-auto rounded-lg">
+                </div>
+
+                {% if similar_products %}
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Similar Products</h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                        {% for item in similar_products %}
+                        <div class="border rounded-lg overflow-hidden shadow-sm hover:shadow-lg transition-shadow duration-300">
+                            <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="w-full h-48 object-cover">
+                            <div class="p-4">
+                                <h3 class="font-semibold text-lg">{{ item.product.name }}</h3>
+                                <p class="text-gray-600 text-sm">{{ item.product.category }}</p>
+                                <p class="text-indigo-600 font-bold mt-2">Similarity: {{ item.similarity|floatformat:2 }}</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-gray-500 mt-8">
+                    <p>No similar products found. Try a different image or adjust the similarity score.</p>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+        </main>
+    </div>
+
+    <script>
+        const form = document.getElementById('search-form');
+        const searchBtn = document.getElementById('search-btn');
+        const loadingSpinner = document.getElementById('loading-spinner');
+        const resultsSection = document.getElementById('results-section');
+        const similaritySlider = document.getElementById('similarity_score');
+        const similarityValue = document.getElementById('similarity-value');
+
+        similaritySlider.addEventListener('input', (event) => {
+            similarityValue.textContent = parseFloat(event.target.value).toFixed(2);
+        });
+
+        form.addEventListener('submit', function() {
+            searchBtn.disabled = true;
+            searchBtn.textContent = 'Searching...';
+            loadingSpinner.classList.remove('hidden');
+            if(resultsSection) {
+                resultsSection.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
